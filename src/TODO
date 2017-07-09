@@ -1,0 +1,11 @@
+Done
+
+* Code to train a classifier on car/non-car images
+* Code to extract frames from video
+* Code to find cars in a single image
+
+TODO
+
+* Run code to extract images from from
+* Apply classifier on all images in a clip
+* Join classified video in a new image
