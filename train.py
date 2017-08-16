@@ -38,5 +38,4 @@ for c in Cs:
 print("Best score: %f" %(best_score))
 
 pickle.dump(best_clf, open('trained_classifier.pkl', 'wb'))
-pickle.dump(X_scaler, open('x_scaler.pkl', 'wb'))
 

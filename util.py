@@ -83,7 +83,7 @@ def extract_features(imgs):
     # Return list of feature vectors
     return features 
 
-def sliding_window_search(img, ystart, ystop, scale, svc, X_scaler):
+def sliding_window_search(img, ystart, ystop, scale, svc):
 
     (cspace, orient, pix_per_cell, cell_per_block, hog_channel) = get_parameters()
     
@@ -154,7 +154,6 @@ def sliding_window_search(img, ystart, ystop, scale, svc, X_scaler):
             xleft = xpos*pix_per_cell
             ytop = ypos*pix_per_cell
             
-            #hog_features = X_scaler.transform(hog_features)
             test_prediction = svc.predict(hog_features)
             
             if test_prediction == 1:
@@ -224,7 +223,7 @@ class Vehicles():
             # Only keeping past 15 images
             self.prev_rects = self.prev_rects[len(self.prev_rects)-self.threshold:]
 
-def pipeline(img, svc, X_scaler, vehicles = None):
+def pipeline(img, svc, vehicles = None):
 
     rectangles = []
 
@@ -236,7 +235,7 @@ def pipeline(img, svc, X_scaler, vehicles = None):
         y_start = yrange[0]
         y_end = yrange[1]
         scale = yrange[2]
-        rectangles.append(sliding_window_search(img, y_start, y_end, scale, svc, X_scaler)) 
+        rectangles.append(sliding_window_search(img, y_start, y_end, scale, svc)) 
 
     rectangles = [item for sublist in rectangles for item in sublist] 
 
