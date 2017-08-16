@@ -6,42 +6,29 @@ from sklearn.svm import LinearSVC
 import pickle
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 
 
-car_dir = "../vehicle_detection_data/vehicles/KITTI_extracted"
-non_car_dir = "../vehicle_detection_data/non-vehicles/Extras"
+
+car_dirs = ["../vehicle_detection_data/vehicles/KITTI_extracted",
+            "../vehicle_detection_data/vehicles/GTI_Far",
+            "../vehicle_detection_data/vehicles/GTI_Left",
+            "../vehicle_detection_data/vehicles/GTI_Right",
+            "../vehicle_detection_data/vehicles/GTI_MiddleClose"]
+non_car_dirs = ["../vehicle_detection_data/non-vehicles/Extras",
+                "../vehicle_detection_data/non-vehicles/GTI"]
 
 # Concatenate feture vector
 # Concatenate feature vector in a vertical vector stack
 # Repeat same for test images
 
-color_space = 'RGB' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
-orient = 9  # HOG orientations
-pix_per_cell = 8 # HOG pixels per cell
-cell_per_block = 2 # HOG cells per block
-hog_channel = 0 # Can be 0, 1, 2, or "ALL"
-spatial_size = (16, 16) # Spatial binning dimensions
-hist_bins = 16    # Number of histogram bins
-spatial_feat = True # Spatial features on or off
-hist_feat = False # Histogram features on or off
-hog_feat = True # HOG features on or off
-y_start_stop = [450, 700] # Min and max in y to search in slide_window()
+features = get_features()
 
-car_features = extract_features(car_dir, color_space=color_space, 
-                        spatial_size=spatial_size, hist_bins=hist_bins, 
-                        orient=orient, pix_per_cell=pix_per_cell, 
-                        cell_per_block=cell_per_block, 
-                        hog_channel=hog_channel, spatial_feat=spatial_feat, 
-                        hist_feat=hist_feat, hog_feat=hog_feat)
+car_features = extract_features(car_dirs)
 
 print("Total car images: ", len(car_features))
 
-non_car_features = extract_features(non_car_dir, color_space=color_space, 
-                        spatial_size=spatial_size, hist_bins=hist_bins, 
-                        orient=orient, pix_per_cell=pix_per_cell, 
-                        cell_per_block=cell_per_block, 
-                        hog_channel=hog_channel, spatial_feat=spatial_feat, 
-                        hist_feat=hist_feat, hog_feat=hog_feat)
+non_car_features = extract_features(non_car_dirs)
 
 print("Total non-car images: ", len(non_car_features))
 
@@ -52,19 +39,30 @@ car_y = np.ones(len(car_features))
 non_car_y = np.zeros(len(non_car_features))
 y = np.hstack((car_y, non_car_y))
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.20, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.10, random_state=42)
 
 # Fit a per-column scaler
 X_scaler = StandardScaler().fit(X_train)
+
 # Apply the scaler to X
 scaled__X_train = X_scaler.transform(X_train)
+
+# Applying PCA
+pca = PCA(n_components=1500)
+pca.fit(scaled__X_train)
+
+scaled__X_train = pca.transform(scaled__X_train)
+
 scaled__X_test = X_scaler.transform(X_test)
+scaled__X_test = pca.transform(scaled__X_test)
 
 print("Feature vectors normalized")
 
 
-print("Training feature vector dimension: ", X.shape)
-print("Training y vector dimension: ",y.shape)
+print("Training feature vector dimension: ", scaled__X_train.shape)
+print("Training y vector dimension: ",y_train.shape)
+print("Test feature vector dimension: ", scaled__X_test.shape)
+print("Test y vector dimension: ",y_test.shape)
 
 # Do a grid search over the dataset to find gamma and C parameter values
 # save the trained classifiero
@@ -90,3 +88,4 @@ for c in Cs:
 
 pickle.dump(best_clf, open('trained_classifier.pkl', 'wb'))
 pickle.dump(X_scaler, open('x_scaler.pkl', 'wb'))
+pickle.dump(pca, open('pca.pkl', 'wb'))

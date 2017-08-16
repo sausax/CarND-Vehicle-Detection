@@ -3,6 +3,28 @@ import numpy as np
 import cv2
 import os
 from skimage.feature import hog
+
+from scipy.ndimage.measurements import label
+from scipy.ndimage.morphology import binary_dilation, grey_dilation
+from moviepy.editor import VideoFileClip
+
+
+def get_features():
+    features = {}
+    features['color_space'] = 'RGB' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    features['orient'] = 9  # HOG orientations
+    features['pix_per_cell'] = 8 # HOG pixels per cell
+    features['cell_per_block'] = 2 # HOG cells per block
+    features['hog_channel'] = 0 # Can be 0, 1, 2, or "ALL"
+    features['spatial_size'] = (16, 16) # Spatial binning dimensions
+    features['hist_bins'] = 16    # Number of histogram bins
+    features['spatial_feat'] = True # Spatial features on or off
+    features['hist_feat'] = False # Histogram features on or off
+    features['hog_feat'] = True # HOG features on or off
+    features['y_start_stop'] = [450, 700] # Min and max in y to search in slide_window()
+    return features
+
+
 # Define a function to return HOG features and visualization
 def get_hog_features(img, orient, pix_per_cell, cell_per_block, 
                         vis=False, feature_vec=True):
@@ -44,34 +66,52 @@ def color_hist(img, nbins=32, bins_range=(0, 256)):
 
 # Define a function to extract features from a list of images
 # Have this function call bin_spatial() and color_hist()
-def extract_features(img_dir, color_space='RGB', spatial_size=(32, 32),
-                        hist_bins=32, orient=9, 
-                        pix_per_cell=8, cell_per_block=2, hog_channel=0,
-                        spatial_feat=True, hist_feat=True, hog_feat=True):
+def extract_features(img_dirs):
     # Create a list to append feature vectors to
     features = []
     # Iterate through the list of images
     #for file in imgs:
-    for img_file in os.listdir(img_dir):
-        if '.png' not in img_file:
-            continue
-        # Read in each one by one
-        image = mpimg.imread(img_dir + '/' + img_file)
-        # apply color conversion if other than 'RGB'
-        file_features = extract_features_for_one_image(image, color_space, spatial_size,
-                        hist_bins, orient, 
-                        pix_per_cell, cell_per_block, hog_channel,
-                        spatial_feat, hist_feat, hog_feat)
+    for img_dir in img_dirs:
+        for img_file in os.listdir(img_dir):
+            if '.png' not in img_file:
+                continue
+            # Read in each one by one
+            image = mpimg.imread(img_dir + '/' + img_file)
+            # apply color conversion if other than 'RGB'
+            file_features = extract_features_for_one_image(image)
 
-        features.append(file_features)
+            features.append(file_features)
+
+            flipped_image = np.fliplr(image)
+
+            # apply color conversion if other than 'RGB'
+            file_features = extract_features_for_one_image(flipped_image)
+
+            features.append(file_features)
+
     # Return list of feature vectors
     return features
 
 
-def extract_features_for_one_image(image, color_space='RGB', spatial_size=(32, 32),
-                        hist_bins=32, orient=9, 
-                        pix_per_cell=8, cell_per_block=2, hog_channel=0,
-                        spatial_feat=True, hist_feat=True, hog_feat=True):
+def extract_features_for_one_image(image):
+
+    ## Set Parameter
+
+    #color_space = 'RGB' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    color_space = 'YCrCb'
+    orient = 9  # HOG orientations
+    pix_per_cell = 8 # HOG pixels per cell
+    cell_per_block = 2 # HOG cells per block
+    hog_channel = 'ALL' # Can be 0, 1, 2, or "ALL"
+    #spatial_size = (16, 16) # Spatial binning dimensions
+    spatial_size = (32, 32) # Spatial binning dimensions
+    #hist_bins = 16    # Number of histogram bins
+    hist_bins = 32
+    spatial_feat = False # Spatial features on or off
+    hist_feat = False # Histogram features on or off
+    hog_feat = True # HOG features on or off
+
+
     file_features = []
     if color_space != 'RGB':
         if color_space == 'HSV':
@@ -183,7 +223,7 @@ def add_heat(heatmap, bbox_list):
     
 def apply_threshold(heatmap, threshold):
     # Zero out pixels below the threshold
-    heatmap[heatmap <= threshold] = 0
+    heatmap[heatmap < threshold] = 0
     # Return thresholded map
     return heatmap
 
@@ -201,3 +241,72 @@ def draw_labeled_bboxes(img, labels):
         cv2.rectangle(img, bbox[0], bbox[1], (0,0,255), 6)
     # Return the image
     return img
+
+def read_pickled_models():
+    clf = pickle.load(open('trained_classifier.pkl', 'rb'))
+    X_scaler = pickle.load(open('x_scaler.pkl', 'rb'))
+    pca = pickle.load(open('pca.pkl', 'rb'))
+    return (clf, X_scaler, pca)
+
+def dilate(img, times=3):
+    for i in range(times):
+        img = grey_dilation(img, size=(5,5))
+    return img
+
+def pipeline(img, clf, X_scaler, pca):
+    y_start_stop = [350, 600] # Min and max in y to search in slide_window()
+
+    #xy_windows = [[64,64], [128,128]]
+    #xy_windows = [[128,128]]
+    xy_windows = [[32,32], [64,64], [128,128], [256, 256]]
+
+    xy_overlap = [0.8,0.8]
+    windows = []
+    for xy_window in xy_windows:
+        tmp_window = slide_window(img, y_start_stop=y_start_stop, xy_window=xy_window, xy_overlap=xy_overlap)
+        print("Temp window size ", len(tmp_window))
+        windows = windows + tmp_window 
+
+    selected_windows = []
+
+
+    for window in windows:
+        image_window = extract_image_window(img, window)
+        # Resize it to 64x64
+        image_window = cv2.resize(image_window, (64,64))
+        image_features = extract_features_for_one_image(image_window)
+        #print(image_features.shape)
+        image_features = image_features.reshape(1, -1)
+        scaled_features = X_scaler.transform(image_features)
+        scaled_features = pca.transform(scaled_features)
+        prediction = clf.predict(scaled_features)
+        if prediction == 1:
+            selected_windows.append(window)
+
+
+    img_copy = img
+
+    heat = np.zeros_like(img_copy[:,:,0]).astype(np.float)
+
+    heat = add_heat(heat, selected_windows)
+        
+    # Apply threshold to help remove false positives
+    heat = apply_threshold(heat, 2)
+    heat = dilate(heat, 3)
+
+    # Visualize the heatmap when displaying    
+    heatmap = np.clip(heat, 0, 255)
+
+    structure = np.ones(9).reshape((3,3))   
+    labels = label(heatmap, structure)
+    draw_img = draw_labeled_bboxes(img_copy, labels)
+
+    return draw_img
+
+# Function to generate final video
+def generate_video(clf, X_scaler, pca):
+    input_video = '../test_video.mp4' 
+    clip1 = VideoFileClip(input_video)
+    output_file = '../output_project_video.mp4'
+    output_clip = clip1.fl_image(lambda img: pipeline(img, clf, X_scaler, pca))
+    output_clip.write_videofile(output_file, audio=False)
