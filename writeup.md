@@ -14,15 +14,6 @@ The goals / steps of this project are the following:
 * Run your pipeline on a video stream (start with the test_video.mp4 and later implement on full project_video.mp4) and create a heat map of recurring detections frame by frame to reject outliers and follow detected vehicles.
 * Estimate a bounding box for vehicles detected.
 
-[//]: # (Image References)
-[image1]: ./examples/car_not_car.png
-[image2]: ./examples/HOG_example.jpg
-[image3]: ./examples/sliding_windows.jpg
-[image4]: ./examples/sliding_window.jpg
-[image5]: ./examples/bboxes_and_heat.png
-[image6]: ./examples/labels_map.png
-[image7]: ./examples/output_bboxes.png
-[video1]: ./project_video.mp4
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/513/view) Points
 ###Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
@@ -69,39 +60,46 @@ Since I am only using HOG features I didn't scaled the feature vector.
 
 Sliding window search functionality is implemented in `sliding_window_search` method present in `util.py` lines 86-166. For each image subsection, first I extract HOG features for whole subsection and then select HOG features for each window from extracted features. After extracting HOG features I run it through SVM classifier to predict whether car is present in the image or not. 
 
-For window subsections I iterate over the different regions of the image with varying scale
+For window subsections I iterate over the different regions of the image with varying (x,y) scales. Dimension and scales are mentioned in 232-233 in `util.py`.
+Instead of configuring overlap ratio between windows I am using 2 cells per step to derive the overlap. 
 
-![alt text][image3]
 
 ####2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
 
-Ultimately I searched on two scales using YCrCb 3-channel HOG features plus spatially binned color and histograms of color in the feature vector, which provided a nice result.  Here are some example images:
+Complete pipeline is present in the `pipeline()` method in `util.py` lines 227-259.
 
-![alt text][image4]
----
+Following steps are present in the pipeline
+
+1. Iterate over image subsections to get sliding window regions
+2. Classify each sliding window as vehicle or non-vehicle
+3. Add intensity to pixels belonging to sliding window with vehicle
+4. Based on a threshold value of 1 ignore regions with low intesity values.
+5. Connect windows based on proximity.
+6. Mark final windows with vehicles.
+
+I tested various colorspaces for the image classification. `YUV` channel worked best. I modified code to use all the channels for HOG features. Also, increasing the `pixels_per_cell` increased classification speed.
+
+Images with bounding boxes
+
+<img src="output_images/test1.png">
+<img src="output_images/test2.png">
+<img src="output_images/test3.png">
+<img src="output_images/test4.png">
+<img src="output_images/test5.png">
+<img src="output_images/test6.png">
+
 
 ### Video Implementation
 
 ####1. Provide a link to your final video output.  Your pipeline should perform reasonably well on the entire project video (somewhat wobbly or unstable bounding boxes are ok as long as you are identifying the vehicles most of the time with minimal false positives.)
-Here's a [link to my video result](./project_video.mp4)
+Here's a [link to my video result](./output_project_video.mp4)
 
 
 ####2. Describe how (and identify where in your code) you implemented some kind of filter for false positives and some method for combining overlapping bounding boxes.
 
-I recorded the positions of positive detections in each frame of the video.  From the positive detections I created a heatmap and then thresholded that map to identify vehicle positions.  I then used `scipy.ndimage.measurements.label()` to identify individual blobs in the heatmap.  I then assumed each blob corresponded to a vehicle.  I constructed bounding boxes to cover the area of each blob detected.  
+Video processing pipeline is same as single image processing pipeling with one difference. I save the state of past 20 matched windows from previous frame and add them to the current window. Then, I use half the number of windows present as a threshold. This reduces the rate of false positive.
 
-Here's an example result showing the heatmap from a series of frames of video, the result of `scipy.ndimage.measurements.label()` and the bounding boxes then overlaid on the last frame of video:
-
-### Here are six frames and their corresponding heatmaps:
-
-![alt text][image5]
-
-### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all six frames:
-![alt text][image6]
-
-### Here the resulting bounding boxes are drawn onto the last frame in the series:
-![alt text][image7]
-
+I added a class `Vehicles` in `util.py` to maintain the state of previous selected windows.
 
 
 ---
@@ -110,5 +108,16 @@ Here's an example result showing the heatmap from a series of frames of video, t
 
 ####1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
 
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
+Following are the main issue that I faced
 
+1. Accuracy of classifier: The accuracy of the classifer was very less when I was using only GITTI_extraced images for vehicles. It increased significantly after adding all the dataset that was available. Adding color and spatial features increased the accuracy on test dataset, but I was getting lot of false positives. False positives decreasd after removing color/spatial features. Adding normalization decreased the accuracy of classifier. 
+
+2. False positives: It was difficult find the correct sliding window section that would find car images without false positive. After lot of experimentation I was able find good sliding window sizes. Also adding `Vehicles` class reduced the number of false positives.
+
+The pipeline fails when two vehicle a very close together. Pipelines joins the area of two vechiles and classify both as part of single vehicle. Also it needs to see complete vehicle before it can classify it.
+
+Improvements that can be made.
+
+* Use a better classifier like CNN for vehicle classification
+* Instead of using hand crafted window sizes classifier should calculate window sizes. 
+* More vehicle training examples collected in different weather/light conditions.    
